@@ -184,53 +184,117 @@ table.cmp td { color: var(--cp-text-muted); }
       token exactly as it would for a live LMS launch, then renders the authenticated student page.</p>
   </header>
 
+
   <div class="card">
-    <h2>Before the first launch — one-time setup</h2>
-    <p class="lede" style="margin-bottom:1rem">LTI 1.3 has no discovery: the tool and the platform must
-      register with each other <strong>before any launch</strong>. Nothing in Steps 1–4 works cold — the
-      tool needs the platform’s public key, issuer, and <code>client_id</code> in hand first.</p>
-    <table class="cmp">
-      <thead><tr><th>What must exist</th><th>In this demo</th><th>In a real LMS</th></tr></thead>
-      <tbody>
-        <tr>
-          <th>Signing keys</th>
-          <td><code>npm run setup</code> generates the platform keypair; ltijs generates the tool’s own keys at boot (served at <code>/keys</code>).</td>
-          <td>The tool generates a keypair and exposes a <strong>JWKS URL</strong>.</td>
-        </tr>
-        <tr>
-          <th>Tool ↔ platform registration</th>
-          <td>The tool calls <code>registerPlatform()</code> at boot, trusting the synthetic platform’s public key, <code>iss</code>, and <code>client_id</code>.</td>
-          <td>An admin creates a <strong>developer / LTI key</strong> from the tool’s config; the LMS issues a <code>client_id</code>.</td>
-        </tr>
-        <tr>
-          <th>Platform endpoints</th>
-          <td>Placeholder <code>iss</code> / authorize / token URLs in <code>.env</code> — never actually called, since the platform is local.</td>
-          <td>The tool stores the LMS’s fixed <code>iss</code>, OIDC authorize, token, and JWKS URLs.</td>
-        </tr>
-        <tr>
-          <th>Deployment</th>
-          <td><code>LTI_DEPLOYMENT_ID=1</code> in <code>.env</code>.</td>
-          <td>An admin <strong>deploys</strong> the key to an account or course, producing a real <code>deployment_id</code>.</td>
-        </tr>
-        <tr>
-          <th>State store</th>
-          <td>MongoDB/Cosmos comes up with the tool (Compose or azd); ltijs persists the registration and per-launch nonces.</td>
-          <td>The tool runs its own database for registrations and launch state.</td>
-        </tr>
-        <tr>
-          <th>Tool address</th>
-          <td><code>TOOL_URL</code> in <code>.env</code> — localhost, or the Container App URL set by the deploy hook.</td>
-          <td>Public HTTPS login &amp; launch URLs registered on the key.</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="foot">Order: <code>npm run setup</code> → bring up the tool + store (which registers the
-      platform) → then <code>npm test</code> / <code>npm run demo</code>. In an LMS, this is the admin’s
-      one-time developer-key setup and deployment before anyone clicks the link.</p>
+    <h2>Registering the tool — Dynamic Registration</h2>
+    <p class="lede" style="margin-bottom:1rem">Instead of an admin hand-copying a client_id, the
+      <strong>LTI Dynamic Registration</strong> protocol has the tool and platform exchange
+      configuration automatically. The included <strong>LMS simulator</strong> drives this end to end,
+      minting the <code>client_id</code> before any launch.</p>
+    <p class="lede" style="margin-bottom:1rem">Technically it is an OAuth 2.0 Dynamic Client Registration
+      exchange bootstrapped by OpenID Connect discovery. The tool GETs the platform's
+      <code>openid-configuration</code> to learn its authorize, token, JWKS, and registration endpoints,
+      then POSTs its own client metadata (redirect URIs, JWKS URL, scopes, placements) to the registration
+      endpoint, authenticated by the one-time <code>registration_token</code>. The platform replies with a
+      generated <code>client_id</code> that both sides persist, so subsequent launches can be mutually
+      verified.</p>
+
+    <svg viewBox="0 0 960 430" role="img" aria-label="LTI Dynamic Registration sequence diagram">
+      <defs>
+        <marker id="rarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--cp-accent)"></path>
+        </marker>
+        <marker id="rarrow-mute" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--cp-text-muted)"></path>
+        </marker>
+        <marker id="rarrow-link" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--cp-link)"></path>
+        </marker>
+      </defs>
+
+      <!-- lanes -->
+      <g>
+        <rect class="lane-box" x="40" y="18" width="220" height="52" rx="10"></rect>
+        <text class="lane-label" x="150" y="40" text-anchor="middle">Admin · LMS UI</text>
+        <text class="lane-sub" x="150" y="57" text-anchor="middle">browser</text>
+        <line class="lifeline" x1="150" y1="70" x2="150" y2="410"></line>
+      </g>
+      <g>
+        <rect class="lane-box" x="380" y="18" width="220" height="52" rx="10"></rect>
+        <text class="lane-label" x="490" y="40" text-anchor="middle">LTI Tool (ltijs)</text>
+        <text class="lane-sub" x="490" y="57" text-anchor="middle">/register</text>
+        <line class="lifeline" x1="490" y1="70" x2="490" y2="410"></line>
+      </g>
+      <g>
+        <rect class="lane-box" x="700" y="18" width="220" height="52" rx="10"></rect>
+        <text class="lane-label" x="810" y="40" text-anchor="middle">LMS Platform</text>
+        <text class="lane-sub" x="810" y="57" text-anchor="middle">openid-config · registration</text>
+        <line class="lifeline" x1="810" y1="70" x2="810" y2="410"></line>
+      </g>
+
+      <!-- A: admin starts registration -->
+      <text class="step-num" x="150" y="98">STEP A · Admin starts registration</text>
+      <text class="msg-label" x="158" y="115">GET /register</text>
+      <text class="msg-sub" x="158" y="129">openid_configuration + registration_token</text>
+      <line class="msg" x1="150" y1="137" x2="486" y2="137" marker-end="url(#rarrow)"></line>
+
+      <!-- tool fetches config -->
+      <text class="msg-sub" x="498" y="157">GET /.well-known/openid-configuration</text>
+      <line class="msg" x1="490" y1="165" x2="806" y2="165" marker-end="url(#rarrow)"></line>
+      <text class="msg-sub" x="650" y="192" text-anchor="middle">config: issuer, authorize, token, jwks_uri, registration_endpoint</text>
+      <line class="msg-return" x1="806" y1="200" x2="494" y2="200" marker-end="url(#rarrow-mute)"></line>
+
+      <!-- B: tool registers itself -->
+      <text class="step-num" x="498" y="230">STEP B · Tool registers itself</text>
+      <text class="msg-sub" x="498" y="246">initiate_login_uri, jwks_uri, redirect_uris, tool config (+ Bearer token)</text>
+      <line class="msg" x1="490" y1="254" x2="806" y2="254" marker-end="url(#rarrow)"></line>
+      <text class="msg-sub" x="650" y="281" text-anchor="middle">201 Created — client_id + deployment_id</text>
+      <line class="msg-return" x1="806" y1="289" x2="494" y2="289" marker-end="url(#rarrow-mute)"></line>
+
+      <!-- tool stores platform -->
+      <path class="selfmsg" d="M490,309 h44 v22 h-44" marker-end="url(#rarrow-link)"></path>
+      <text class="msg-sub" x="540" y="316">store platform (iss, client_id, endpoints, jwks_uri)</text>
+
+      <!-- C: done -->
+      <text class="step-num" x="150" y="352">STEP C · Registration complete</text>
+      <text class="msg-sub" x="320" y="368" text-anchor="middle">close registration window (postMessage lti.close)</text>
+      <line class="msg-return" x1="486" y1="376" x2="154" y2="376" marker-end="url(#rarrow-mute)"></line>
+      <rect class="note-box" x="250" y="386" width="300" height="20" rx="5"></rect>
+      <text class="note-text" x="400" y="400" text-anchor="middle">LMS UI reloads → Registered · launch now enabled</text>
+    </svg>
+
+    <h2 style="margin-top:1.5rem">Do it in the demo</h2>
+    <ol class="steps">
+      <li>
+        <strong>Open the LMS simulator</strong>
+        <span>Browse to the LMS URL (<code>AZURE_LMS_URL</code>). It shows “Not registered”.</span>
+      </li>
+      <li>
+        <strong>Click “Register tool (Dynamic Registration)”</strong>
+        <span>A popup opens the tool’s <code>/register</code>; the tool and LMS run steps A–C above.
+          The status flips to <span style="color:var(--cp-success);font-weight:600">Registered</span>
+          with a minted <code>client_id</code>, and the launch buttons enable.</span>
+      </li>
+      <li>
+        <strong>Launch</strong>
+        <span>Click “Launch as Student” or “Launch as Instructor” — this runs the launch handshake
+          below and renders the authenticated page.</span>
+      </li>
+    </ol>
+    <p class="foot">Headless equivalent: <code>npm run test:dynreg</code> drives registration and a
+      student launch across both services and asserts the rendered page — no browser required.</p>
   </div>
 
   <div class="card">
     <h2>The launch handshake</h2>
+    <p class="lede" style="margin-bottom:1rem">Technically the launch is an OpenID Connect implicit flow
+      (<code>response_type=id_token</code>) begun by third-party-initiated login. Step 1 hands the
+      platform-initiated click to the tool; Step 2 lets the tool mint its own <code>nonce</code> and
+      <code>state</code> before any token exists, which makes the token replay-proof and binds the result
+      to this browser; Step 3 delivers the platform-signed <code>id_token</code>, which the tool verifies
+      against the platform's JWKS; Step 4 renders only once every claim checks out. The hops are browser
+      redirects, not server-to-server calls, so the platform can attach the user's session and the tool
+      can set and re-read its <code>state</code> cookie.</p>
     <svg viewBox="0 0 960 560" role="img" aria-label="LTI 1.3 launch sequence diagram">
       <defs>
         <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -363,7 +427,7 @@ table.cmp td { color: var(--cp-text-muted); }
     <h2>Every field, and why it’s there</h2>
     <p class="lede" style="margin-bottom:.4rem">The parameters do three jobs: establish
       <strong>identity</strong> (who is talking, to whom, about what), provide
-      <strong>security correlation</strong> (stop forgery and replay), and carry
+      <strong>security correlation</strong>, and carry
       <strong>the payload</strong> (who the user is).</p>
 
     <table class="gtable">
@@ -379,7 +443,7 @@ table.cmp td { color: var(--cp-text-muted); }
     </table>
 
     <table class="gtable">
-      <caption>Security correlation — stop forgery &amp; replay</caption>
+      <caption>Security correlation</caption>
       <tbody>
         <tr><th><code>state</code></th><td><strong>Anti-CSRF.</strong> A random value the tool creates in Step 2 and stores in a cookie. The platform echoes it back with the token; the tool checks they match to prove the response belongs to the <em>same browser</em> that started the launch.</td></tr>
         <tr><th><code>nonce</code></th><td><strong>Anti-replay.</strong> A random single-use value the tool creates in Step 2. It must appear <em>inside</em> the signed <code>id_token</code>; the tool checks it matches and hasn’t been seen before, so an old token can’t be reused.</td></tr>
@@ -436,77 +500,45 @@ table.cmp td { color: var(--cp-text-muted); }
     </div>
   </div>
 
-  <div class="grid">
-    <div class="card">
-      <h2>Run the demo</h2>
-      <ol class="steps">
-        <li>
-          <strong>Confirm the tool is live</strong>
-          <span>The tool is deployed to Azure Container Apps in resource group <code>lti-demo</code>.
-            Health check should return <code>{"status":"ok"}</code> at <code>/healthz</code>.</span>
-        </li>
-        <li>
-          <strong>Run the headless proof</strong>
-          <span>Signs a student launch and validates the full round-trip. Good for showing it is CI-able.</span>
-          <pre>npm test</pre>
-          <span>Expect: <code>PASS: complete LTI 1.3 OIDC launch handshake validated.</code></span>
-        </li>
-        <li>
-          <strong>Run the visual demo</strong>
-          <span>Opens a real browser and completes the launch top-level, rendering the authenticated page.</span>
-          <pre>npm run demo</pre>
-          <span>The page shows <code>User: Sam Student</code>, <code>Course: course-101</code>,
-            <code>Deployment: 1</code>, <code>Role: Learner, Student</code>. Close the window to end.</span>
-        </li>
-        <li>
-          <strong>Show the persisted state</strong>
-          <span>In the Azure portal, open the <code>lti-demo</code> Cosmos account → Data Explorer →
-            the <code>ltijs</code> database to show the platform registration and the launch
-            nonce/state records written during the handshake.</span>
-        </li>
-        <li>
-          <strong>Talking point: the trust boundary</strong>
-          <span>The tool accepts a launch only because the token’s signature, issuer, audience,
-            one-time nonce, expiry, and deployment all validate. Break any one and the launch is rejected.</span>
-        </li>
-      </ol>
-    </div>
-
-    <div class="card">
-      <h2>What’s real vs. simulated</h2>
-      <ul class="fid">
-        <li>
-          <span class="pill real">REAL</span>
-          <strong>The tool and its validation.</strong>
-          <span> <code>ltijs</code> is a certified LTI 1.3 library; it enforces the same JWT signature,
-            <code>iss</code>, <code>aud</code>, <code>nonce</code>, <code>exp</code>, <code>deployment_id</code>,
-            and <code>state</code> checks an LMS requires.</span>
-        </li>
-        <li>
-          <span class="pill real">REAL</span>
-          <strong>LMS-shaped student claims.</strong>
-          <span> <code>LtiResourceLinkRequest</code> with <code>membership#Learner</code> +
-            <code>institution/person#Student</code>, <code>context</code>, <code>tool_platform</code>,
-            <code>launch_presentation</code>.</span>
-        </li>
-        <li>
-          <span class="pill sim">SIMULATED</span>
-          <strong>The platform.</strong>
-          <span> The test script signs the token with a local key registered on the tool
-            (ltijs <code>RSA_KEY</code>) instead of the LMS signing it and publishing a JWKS;
-            <code>iss</code>/<code>client_id</code> are placeholders.</span>
-        </li>
-        <li>
-          <span class="pill sim">SIMULATED</span>
-          <strong>Step 2 &amp; the iframe path.</strong>
-          <span> The redirect to the LMS’s session-checking authorize endpoint is short-circuited,
-            and the launch runs <em>top-level</em>, so the iframe + LTI Platform Storage
-            (<code>lti_storage_target</code>) cookieless flow is not reproduced.</span>
-        </li>
-      </ul>
-      <p class="foot">Switching student ↔ instructor is a launch-script change only — the tool renders
-        whatever role the token asserts, so no redeploy is needed to demo a different persona.</p>
-    </div>
+  <div class="card">
+    <h2>Run the demo</h2>
+    <ol class="steps">
+      <li>
+        <strong>Open the LMS simulator</strong>
+        <span>Browse to the LMS Container App URL (<code>azd env get-value AZURE_LMS_URL</code>). It shows
+          an LMS admin <em>Developer Keys</em> page with no LTI keys yet.</span>
+      </li>
+      <li>
+        <strong>Register the tool (Dynamic Registration)</strong>
+        <span>Click <em>“+ LTI Registration (Dynamic)”</em>, leave the tool’s registration URL, and click
+          <em>Register</em>. A popup opens the tool’s <em>Install</em> screen (name, target link, scopes);
+          click <em>Register</em> there. The popup closes and a key card appears with the minted
+          <code>client_id</code> and deployment.</span>
+      </li>
+      <li>
+        <strong>Launch</strong>
+        <span>Click <em>Launch as Student</em> or <em>Launch as Instructor</em>. A real OIDC launch runs
+          (login → authorize → signed <code>id_token</code>) and the tool opens as an AI study-assistant
+          chat that greets the user and shows the LTI context (course, role, deployment).</span>
+      </li>
+      <li>
+        <strong>Headless proofs (CI-able)</strong>
+        <span>Prove the same flows without a browser:</span>
+        <pre>npm test          # static-platform handshake
+npm run test:dynreg   # Dynamic Registration + launch, end to end</pre>
+        <span>Expect <code>PASS</code> from each. <code>npm run demo</code> also runs a single-service
+          launch in a real headed browser.</span>
+      </li>
+      <li>
+        <strong>Show the persisted state</strong>
+        <span>In the Azure portal, open the <code>lti-demo</code> Cosmos account → Data Explorer → the
+          <code>ltijs</code> database to show the platform registration (including the dynamically
+          registered one) and the launch nonce/state records.</span>
+      </li>
+    </ol>
+    <p class="foot">The tool accepts a launch only because the token’s signature, issuer, audience,
+      one-time nonce, expiry, and deployment all validate — break any one and it’s rejected. Switching
+      student ↔ instructor is a launch choice only; the tool renders whatever role the token asserts.</p>
   </div>
 </div>
 </body>

@@ -109,8 +109,15 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 // Placeholder public image; azd replaces it with the ACR build on deploy.
 var placeholderImage = 'mcr.microsoft.com/k8se/quickstart:latest'
 
+// Compute both app FQDNs from the environment domain to avoid a dependency cycle
+// (each app needs to know the other's URL at provision time).
+var toolAppName = 'ca-${resourceToken}'
+var lmsAppName = 'lms-${resourceToken}'
+var toolFqdn = 'https://${toolAppName}.${containerEnv.properties.defaultDomain}'
+var lmsFqdn = 'https://${lmsAppName}.${containerEnv.properties.defaultDomain}'
+
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ca-${resourceToken}'
+  name: toolAppName
   location: location
   tags: union(tags, {
     'azd-service-name': 'tool'
@@ -193,6 +200,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'PLATFORM_TOKEN_ENDPOINT'
               value: platformTokenEndpoint
             }
+            {
+              name: 'TOOL_URL'
+              value: toolFqdn
+            }
           ]
         }
       ]
@@ -218,6 +229,69 @@ resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
+// LMS simulator: LTI 1.3 platform (Dynamic Registration + launch UI).
+resource lmsApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: lmsAppName
+  location: location
+  tags: union(tags, {
+    'azd-service-name': 'lms'
+  })
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${identity.id}': {}
+    }
+  }
+  properties: {
+    managedEnvironmentId: containerEnv.id
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: true
+        targetPort: 3000
+        transport: 'auto'
+      }
+      registries: [
+        {
+          server: registry.properties.loginServer
+          identity: identity.id
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'lms'
+          image: placeholderImage
+          resources: {
+            cpu: json('0.5')
+            memory: '1.0Gi'
+          }
+          env: [
+            {
+              name: 'PORT'
+              value: '3000'
+            }
+            {
+              name: 'LMS_URL'
+              value: lmsFqdn
+            }
+            {
+              name: 'TOOL_URL'
+              value: toolFqdn
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+    }
+  }
+}
+
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.properties.loginServer
 output toolUrl string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
+output lmsUrl string = 'https://${lmsApp.properties.configuration.ingress.fqdn}'
 output webAppName string = containerApp.name

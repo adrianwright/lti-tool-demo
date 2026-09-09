@@ -9,6 +9,9 @@
     "start": "node server.js",
     "test": "node scripts/launch.mjs",
     "demo": "node scripts/launch-browser.mjs",
+    "test:dynreg": "node scripts/register-and-launch.mjs",
+    "reset": "node scripts/reset-registration.mjs",
+    "local": "pwsh -File scripts/run-local.ps1",
     "check": "node --check server.js && node --check scripts/setup.mjs && node --check scripts/launch.mjs"
   },
   "engines": {

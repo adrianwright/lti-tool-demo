@@ -9,6 +9,12 @@ services:
     language: docker
     docker:
       remoteBuild: true
+  lms:
+    project: ./lms
+    host: containerapp
+    language: docker
+    docker:
+      remoteBuild: true
 hooks:
   preprovision:
     shell: pwsh

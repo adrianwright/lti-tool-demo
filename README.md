@@ -1,80 +1,97 @@
 # LTI 1.3 Handshake POC
 
-A minimal, self-contained proof that an LTI 1.3 tool can complete an OpenID
-Connect launch and validate a platform-signed resource-link token. It proves:
+A self-contained proof of the LTI 1.3 launch contract: an **LTI tool** (built on
+[ltijs](https://cvmcosta.me/ltijs/)) that an LMS registers via **Dynamic
+Registration** and launches over OpenID Connect. It ships with a **minimal LMS
+simulator** so the whole flow — registration *and* a real signed launch — runs
+end to end with no external LMS.
 
-- OIDC login initiation through `/login`
-- state and nonce round-trip validation
-- RS256 launch-token signature, issuer, audience, expiry, and deployment checks
-- instructor role and course-context extraction
-- routing to an authenticated tool page
+It demonstrates:
 
-The platform is synthetic and runs as the test script. The tool uses
-[ltijs](https://cvmcosta.me/ltijs/), and MongoDB stores launch state and platform
-registration data.
+- **Dynamic Registration** — the tool and platform exchange configuration
+  automatically and the platform mints the `client_id`.
+- **OIDC launch** — login initiation, state/nonce round-trip, and RS256
+  `id_token` validation (signature, issuer, audience, expiry, deployment),
+  with role and course-context extraction.
+- **Role-aware rendering** — the tool renders whatever role the token asserts
+  (student or instructor) as an AI study-assistant chat that surfaces the LTI
+  context.
+
+There are two ways to drive the tool:
+
+- **LMS simulator** (`lms/`) — a real LTI 1.3 platform: `openid-configuration`,
+  JWKS, a registration endpoint, an authorize endpoint that signs `id_token`s,
+  and a thin admin UI to register and launch.
+- **Synthetic scripts** — headless/browser drivers that sign a launch directly
+  against the tool (no LMS needed), for fast CI-style proofs.
+
+**MongoDB** (local) / **Cosmos DB for MongoDB** (Azure) stores registrations and
+launch state.
+
+> [!WARNING]
+> This repository is a demonstration only and is not intended for use in
+> production systems as-is.
+
+## Components
+
+| Part | Path | Role |
+| --- | --- | --- |
+| Tool | [server.js](server.js) | ltijs LTI 1.3 tool: `/login`, `/lti/launch`, `/keys`, `/register`, `/healthz` |
+| LMS simulator | [lms/server.js](lms/server.js) | LTI 1.3 platform: `openid-configuration`, `/jwks`, `/lti/register`, `/authorize`, `/launch`, admin UI |
+| Store | Docker Mongo / Cosmos | ltijs registrations + nonce/state |
 
 ## Prerequisites
 
 - Node.js 20 or later
-- Docker with Docker Compose
+- Docker (for local MongoDB) — or your own MongoDB on `localhost:27017`
+- For Azure deployment: [Azure Developer CLI](https://aka.ms/azd) (`azd`) + Azure CLI
 
-## Run the POC
+## Run locally
 
-```sh
+One command starts MongoDB (Docker), the tool, and the LMS simulator:
+
+```powershell
 npm install
-npm run setup
-docker compose up --build -d
-npm test
+npm run local
 ```
 
-Expected result:
+Then open the **LMS simulator** at <http://localhost:4000>:
 
-```text
-PASS: complete LTI 1.3 OIDC launch handshake validated.
-  state and nonce round-trip: yes
-  platform JWT signature:    verified
-  audience and deployment:   verified
-  role and course context:    routed
+1. **Register tool (Dynamic Registration)** — review the tool's *Install* screen, click **Register**.
+2. **Launch as Student / Instructor** — the tool opens as an AI study-assistant chat showing the LTI context.
+
+Re-run registration anytime with the LMS **Forget registration** button or
+`npm run reset`. Close the two app windows to stop; `docker compose down` stops Mongo.
+
+Headless proofs (no browser):
+
+```powershell
+npm test             # signed launch against the tool (synthetic static platform)
+npm run test:dynreg  # Dynamic Registration + launch through the LMS simulator
+npm run demo         # visual single-service launch in a real browser (Playwright)
 ```
 
-Stop the local services with:
+`npm run local` runs the tool with `LTI_DEV_MODE=true` (relaxed cookies) so the
+browser launch works over plain `http://localhost`.
 
-```sh
-docker compose down
-```
+## Run on Azure
 
-Run `npm run setup` again whenever you want a fresh platform identity and tool
-encryption key. Generated keys and `.env` are intentionally ignored by Git.
-
-## Run the POC on Azure
-
-The same headless handshake can run against the tool hosted on Azure
-Container Apps with Cosmos DB for MongoDB as the ltijs datastore. Deployment
-uses [Azure Developer CLI](https://aka.ms/azd) (`azd`); the container image is
-built remotely in Azure Container Registry, so **no local Docker is required**.
-Cosmos is provisioned with public network access and key (connection-string)
-auth so ltijs connects without a private endpoint. The synthetic platform
-still runs locally as the test script and signs launches with the key from
-`npm run setup`.
-
-Prerequisites: `azd` and Azure CLI logged in to a subscription where public
-network + local auth on Cosmos are permitted.
+`azd` deploys the tool **and** the LMS simulator as two Azure Container Apps,
+with Cosmos DB for MongoDB as the store. Images build remotely in Azure
+Container Registry, so **no local Docker is required**.
 
 ```powershell
 ./scripts/azd-up.ps1
-npm test
+npm run test:dynreg      # or open the LMS URL and click through
 ```
 
-`azd up` provisions [infra/main.bicep](infra/main.bicep), builds and pushes the
-image via ACR remote build, and deploys the tool. Hooks bridge the synthetic
-platform: [scripts/preprovision.ps1](scripts/preprovision.ps1) loads the
-generated `.env` identity into the azd environment, and
-[scripts/postprovision.ps1](scripts/postprovision.ps1) rewrites `TOOL_URL` in
-`.env` to the Container App URL — so `npm test` exercises the full OIDC launch
-against the cloud endpoint instead of `localhost`.
-
-[scripts/azd-up.ps1](scripts/azd-up.ps1) pins the subscription (from `az
-login`) and region so azd runs non-interactively.
+- [scripts/azd-up.ps1](scripts/azd-up.ps1) pins the subscription (from `az login`)
+  and region so azd runs non-interactively.
+- Hooks bridge the synthetic identity:
+  [scripts/preprovision.ps1](scripts/preprovision.ps1) loads it into the azd
+  environment; [scripts/postprovision.ps1](scripts/postprovision.ps1) points
+  `TOOL_URL` at the deployed tool.
+- Get the URLs with `azd env get-value AZURE_TOOL_URL` and `AZURE_LMS_URL`.
 
 Tear down with:
 
@@ -82,52 +99,67 @@ Tear down with:
 azd down --purge --force
 ```
 
-Because Container Apps ingress terminates TLS and forwards HTTP, the tool sets
-Express `trust proxy` so ltijs still emits its `SameSite=None; Secure` state
-cookie.
+Cosmos is provisioned with public network access and key (connection-string)
+auth. Some tenants enforce a policy that re-disables public network on the
+account; if a launch hangs, re-enable public network and restart the tool's
+container revision. Because Container Apps ingress terminates TLS, the tool sets
+Express `trust proxy` so ltijs still emits its `SameSite=None; Secure` cookie.
+
+## npm scripts
+
+| Script | Purpose |
+| --- | --- |
+| `setup` | Generate a synthetic platform key + `.env` |
+| `local` | Run the tool + LMS simulator + Mongo locally |
+| `test` | Headless signed launch (static synthetic platform) |
+| `test:dynreg` | Headless Dynamic Registration + launch (LMS simulator) |
+| `demo` | Visual browser launch (Playwright) |
+| `reset` | Clear the LMS simulator's registration |
+| `start` | Run the tool alone |
+| `check` | Syntax-check the sources |
 
 ## Endpoints
 
-| Purpose | URL |
-| --- | --- |
-| OIDC login initiation | `http://localhost:3000/login` |
-| LTI launch | `http://localhost:3000/lti/launch` |
-| Tool JWKS | `http://localhost:3000/keys` |
-| Health check | `http://localhost:3000/healthz` |
+| | Tool | LMS simulator |
+| --- | --- | --- |
+| UI / launch page | `/lti/launch` | `/` (admin), `/launch` |
+| OIDC | `/login`, `/keys` | `/.well-known/openid-configuration`, `/authorize`, `/jwks` |
+| Registration | `/register` | `/lti/register` |
+| Ops | `/healthz` | `/reset`, `/status` |
 
-## Scope
+## Two registration paths
 
-This repository intentionally stops at the handshake. It does not include an
-LMS UI, iframe embedding, dynamic registration, LTI Advantage services, or a
-learner experience. Those are separate integration steps and are not needed to
-validate the core LTI 1.3 launch contract. Optional Azure infrastructure
-(Container Apps + Cosmos DB for MongoDB) is included to prove the same
-handshake against a hosted tool over HTTPS.
-
-For a real LMS registration, expose the tool over stable HTTPS, replace the
-synthetic platform settings with the LMS issuer/client/endpoints/JWKS, and set
-an appropriate `Content-Security-Policy: frame-ancestors` policy.
+- **Static** — the tool registers a synthetic platform at boot from `PLATFORM_*`
+  env (an RSA public key). The synthetic scripts sign launches against it. Fast,
+  no LMS required (`npm test`, `npm run demo`).
+- **Dynamic** — the LMS simulator drives LTI Dynamic Registration: the tool
+  fetches the LMS `openid-configuration` and POSTs its client metadata; the LMS
+  mints a `client_id`. This mirrors how a real LMS admin onboards a tool
+  (`npm run test:dynreg`, or the LMS admin UI).
 
 ## Fidelity vs. a real LMS
 
-The handshake mirrors an LMS's LTI 1.3 launch (the standard four-step OIDC
-flow) and the tool side is production-real: `ltijs` performs the same
-validation an LMS requires — JWT signature, `iss`, `aud`, one-time `nonce`,
-`exp`, `deployment_id`, and the `state` round-trip. The student launch token
-carries LMS-shaped claims (`LtiResourceLinkRequest`, `roles` including
-`membership#Learner`, `context`, `tool_platform`, `launch_presentation`).
+The tool side is production-real: `ltijs` enforces the same validation an LMS
+requires — JWT signature (via JWKS), `iss`, `aud`, one-time `nonce`, `exp`,
+`deployment_id`, and the `state` round-trip. With the **LMS simulator** the
+launch is a genuine OIDC browser-redirect flow (login → authorize →
+platform-signed `id_token` → JWKS-verified), and registration is real LTI
+Dynamic Registration.
 
-It differs from a real LMS launch in these ways:
+It differs from a real LMS in these ways:
 
-- The **platform is synthetic**: the test script signs the `id_token` with a
-  local key registered directly on the tool (ltijs `RSA_KEY`), rather than
-  the LMS signing it and publishing a JWKS. `iss` and `client_id` are
-  placeholders, not a real LMS issuer and client registration.
-- The LMS's **Step 2** authenticates the user's LMS session at its
-  `authorize_redirect` endpoint; the simulation short-circuits that redirect
-  because there is no real session to validate.
-- The launch runs **top-level**, so the `state` cookie stays first-party. A
-  real LMS launch renders in an **iframe**, where the third-party `state`
-  cookie is blocked and the **LTI Platform Storage** `postMessage` flow
-  (`lti_storage_target`) is required. That cookieless iframe path is not
-  simulated here.
+- The LMS simulator does not authenticate a real user session — its authorize
+  endpoint issues the `id_token` immediately, whereas a real LMS validates the
+  signed-in user.
+- Launches run **top-level**, so the `state` cookie stays first-party. A real
+  LMS renders the tool in an **iframe**, where third-party-cookie blocking
+  requires the **LTI Platform Storage** (`lti_storage_target`) `postMessage`
+  flow — not reproduced here.
+- The synthetic-script mode additionally short-circuits the authorize redirect
+  (it signs the token directly) and uses placeholder `iss`/`client_id`.
+
+## Walkthrough
+
+Open [demo.html](demo.html) for an illustrated walkthrough: architecture, the
+Dynamic Registration and launch sequence diagrams, a field-by-field glossary,
+and the authentication model.

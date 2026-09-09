@@ -61,4 +61,5 @@ module resources 'resources.bicep' = {
 output AZURE_LOCATION string = location
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.AZURE_CONTAINER_REGISTRY_ENDPOINT
 output AZURE_TOOL_URL string = resources.outputs.toolUrl
+output AZURE_LMS_URL string = resources.outputs.lmsUrl
 output SERVICE_TOOL_NAME string = resources.outputs.webAppName
