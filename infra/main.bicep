@@ -31,6 +31,15 @@ param platformTokenEndpoint string
 @description('Base64-encoded platform public key (PEM) used to verify launches.')
 param platformPublicKey string
 
+@description('Entra application (client) ID that gates the LMS simulator with built-in auth (Easy Auth).')
+param entraAppId string
+
+@description('Name of the Key Vault (in secretsResourceGroup) holding the Entra client secret.')
+param keyVaultName string
+
+@description('Resource group of the Key Vault holding the Entra client secret.')
+param vaultResourceGroup string
+
 var tags = {
   'azd-env-name': environmentName
 }
@@ -39,7 +48,9 @@ var resourceToken = toLower(uniqueString(subscription().id, environmentName, loc
 resource rg 'Microsoft.Resources/resourceGroups@2022-09-01' = {
   name: environmentName
   location: location
-  tags: tags
+  tags: union(tags, {
+    SecurityControl: 'ignore'
+  })
 }
 
 module resources 'resources.bicep' = {
@@ -55,6 +66,9 @@ module resources 'resources.bicep' = {
     platformAuthEndpoint: platformAuthEndpoint
     platformTokenEndpoint: platformTokenEndpoint
     platformPublicKey: platformPublicKey
+    entraAppId: entraAppId
+    keyVaultName: keyVaultName
+    vaultResourceGroup: vaultResourceGroup
   }
 }
 

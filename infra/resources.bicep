@@ -17,6 +17,15 @@ param platformAuthEndpoint string
 param platformTokenEndpoint string
 param platformPublicKey string
 
+@description('Entra (Azure AD) application (client) ID that gates the LMS simulator with built-in auth (Easy Auth). Add a redirect URI of https://<lms-fqdn>/.auth/login/aad/callback to this app registration.')
+param entraAppId string
+
+@description('Name of the Key Vault (in secretsResourceGroup) holding the Entra client secret.')
+param keyVaultName string
+
+@description('Resource group of the Key Vault holding the Entra client secret.')
+param vaultResourceGroup string
+
 var databaseName = 'ltijs'
 var acrPullRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
 
@@ -230,6 +239,22 @@ resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 // LMS simulator: LTI 1.3 platform (Dynamic Registration + launch UI).
+// The Entra client secret lives in a Key Vault in a separate resource group.
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+  scope: resourceGroup(vaultResourceGroup)
+}
+
+// Let the LMS identity read the client secret from the vault (data-plane RBAC).
+module lmsKvRole 'keyvault-role.bicep' = {
+  name: 'lms-kv-secrets-user'
+  scope: resourceGroup(vaultResourceGroup)
+  params: {
+    keyVaultName: keyVaultName
+    principalId: identity.properties.principalId
+  }
+}
+
 resource lmsApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: lmsAppName
   location: location
@@ -254,6 +279,13 @@ resource lmsApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: [
         {
           server: registry.properties.loginServer
+          identity: identity.id
+        }
+      ]
+      secrets: [
+        {
+          name: 'aad-client-secret'
+          keyVaultUrl: '${keyVault.properties.vaultUri}secrets/entra-client-secret'
           identity: identity.id
         }
       ]
@@ -287,6 +319,53 @@ resource lmsApp 'Microsoft.App/containerApps@2024-03-01' = {
         minReplicas: 1
         maxReplicas: 1
       }
+    }
+  }
+  // The KV-referenced secret only resolves once the identity has vault access.
+  dependsOn: [
+    lmsKvRole
+  ]
+}
+
+// Built-in auth (Easy Auth) for the LMS simulator: require an Entra sign-in from
+// THIS tenant only. The tenant-pinned issuer rejects tokens from other tenants.
+// OIDC discovery + JWKS + the token-secured registration endpoint are excluded so
+// the tool's server-to-server calls still work without an interactive login.
+resource lmsAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
+  parent: lmsApp
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+      redirectToProvider: 'azureactivedirectory'
+      excludedPaths: [
+        '/healthz'
+        '/.well-known/openid-configuration'
+        '/jwks'
+        '/lti/register'
+      ]
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          openIdIssuer: '${environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
+          clientId: entraAppId
+          clientSecretSettingName: 'aad-client-secret'
+        }
+        validation: {
+          allowedAudiences: [
+            entraAppId
+            'api://${entraAppId}'
+          ]
+        }
+      }
+    }
+    login: {
+      preserveUrlFragmentsForLogins: false
     }
   }
 }

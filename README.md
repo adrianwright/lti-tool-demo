@@ -78,26 +78,64 @@ browser launch works over plain `http://localhost`.
 
 `azd` deploys the tool **and** the LMS simulator as two Azure Container Apps,
 with Cosmos DB for MongoDB as the store. Images build remotely in Azure
-Container Registry, so **no local Docker is required**.
+Container Registry, so **no local Docker is required**. The LMS simulator is
+protected by **Entra built-in auth (Easy Auth)**, single-tenant.
+
+### Prerequisite: an Entra app registration
+
+The LMS Easy Auth needs an Entra **app registration** (single-tenant) in your
+tenant. Create one and a **client secret** — you'll pass its application (client)
+ID and secret to the deploy script. Under **Authentication → Implicit grant and
+hybrid flows**, enable **ID tokens** (Easy Auth uses the hybrid flow; without it
+the login callback returns HTTP 401):
 
 ```powershell
-./scripts/azd-up.ps1
-npm run test:dynreg      # or open the LMS URL and click through
+az ad app update --id <app-client-id> --enable-id-token-issuance true
 ```
 
+(You'll add its redirect URI *after* the first deploy, once the LMS URL exists —
+see below.)
+
+### Deploy
+
+```powershell
+./scripts/azd-up.ps1 -EntraAppId <app-client-id> -VaultResourceGroup rg-lti-secrets
+#   prompts securely for the client secret; -VaultName / -Location optional
+```
+
+- The script **upserts a Key Vault** (in `-VaultResourceGroup`, a separate RG),
+  stores the app id + secret there, and the LMS app reads the secret at runtime
+  via its managed identity — the secret never enters the azd environment.
 - [scripts/azd-up.ps1](scripts/azd-up.ps1) pins the subscription (from `az login`)
-  and region so azd runs non-interactively.
-- Hooks bridge the synthetic identity:
-  [scripts/preprovision.ps1](scripts/preprovision.ps1) loads it into the azd
-  environment; [scripts/postprovision.ps1](scripts/postprovision.ps1) points
-  `TOOL_URL` at the deployed tool.
+  and region; [scripts/preprovision.ps1](scripts/preprovision.ps1) fails fast if
+  the Entra/vault settings are missing.
 - Get the URLs with `azd env get-value AZURE_TOOL_URL` and `AZURE_LMS_URL`.
+
+### After the first deploy: add the redirect URI
+
+Easy Auth login only works once the app registration trusts the LMS callback.
+Once deployed, take the LMS URL and add this redirect URI to the app
+registration (**Authentication → Web → Redirect URIs**), and enable **ID tokens**:
+
+```
+https://<lms-fqdn>/.auth/login/aad/callback
+```
+
+where `<lms-fqdn>` is the host from `azd env get-value AZURE_LMS_URL`. Until this
+is set, users can't sign in to the LMS simulator. Then browse to the LMS URL,
+sign in with a tenant account, and register + launch the tool.
+
+On Azure the LMS admin UI is behind Entra sign-in, so drive it in the **browser**.
+The headless `npm run test:dynreg` is a **local** proof (it can't complete the
+Entra login flow).
 
 Tear down with:
 
 ```powershell
 azd down --purge --force
 ```
+
+The Key Vault lives in its own resource group, so `azd down` leaves it intact.
 
 Cosmos is provisioned with public network access and key (connection-string)
 auth. Some tenants enforce a policy that re-disables public network on the

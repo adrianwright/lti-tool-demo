@@ -25,4 +25,13 @@ foreach ($key in $required) {
   azd env set $key $envMap[$key] | Out-Null
 }
 
+# The LMS simulator requires Entra Easy Auth backed by a Key Vault. Fail provisioning
+# early (with a clear message) if the deploy script hasn't set these.
+foreach ($key in 'ENTRA_APP_ID', 'VAULT_NAME', 'VAULT_RG') {
+  $value = (azd env get-value $key 2>$null)
+  if (-not $value -or $value -match '^ERROR') {
+    throw "Missing $key. Deploy with scripts/azd-up.ps1 (which upserts the vault and sets these), or azd env set them manually."
+  }
+}
+
 Write-Host 'Synthetic platform identity loaded into the azd environment.'

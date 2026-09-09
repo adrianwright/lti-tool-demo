@@ -25,6 +25,15 @@
     },
     "platformPublicKey": {
       "value": "${PLATFORM_PUBLIC_KEY}"
+    },
+    "entraAppId": {
+      "value": "${ENTRA_APP_ID}"
+    },
+    "keyVaultName": {
+      "value": "${VAULT_NAME}"
+    },
+    "vaultResourceGroup": {
+      "value": "${VAULT_RG}"
     }
   }
 }

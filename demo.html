@@ -502,11 +502,18 @@ table.cmp td { color: var(--cp-text-muted); }
 
   <div class="card">
     <h2>Run the demo</h2>
+    <p class="lede" style="margin-bottom:.6rem">Run everything <strong>locally</strong> with one command —
+      MongoDB (Docker) plus the tool and LMS simulator on <code>localhost</code>:</p>
+    <pre>npm install
+npm run local        # tool :3000, LMS :4000, Mongo :27017</pre>
+    <p class="lede" style="margin-bottom:1rem">Then open the LMS at <code>http://localhost:4000</code> and
+      follow the steps below. On Azure it is identical — open <code>azd env get-value AZURE_LMS_URL</code>
+      instead. (Local runs the tool in dev mode so the browser launch works over plain <code>http</code>.)</p>
     <ol class="steps">
       <li>
         <strong>Open the LMS simulator</strong>
-        <span>Browse to the LMS Container App URL (<code>azd env get-value AZURE_LMS_URL</code>). It shows
-          an LMS admin <em>Developer Keys</em> page with no LTI keys yet.</span>
+        <span>The LMS admin <em>Developer Keys</em> page — <code>http://localhost:4000</code> locally, or the
+          Container App URL (<code>azd env get-value AZURE_LMS_URL</code>) on Azure. It shows no LTI keys yet.</span>
       </li>
       <li>
         <strong>Register the tool (Dynamic Registration)</strong>
@@ -531,14 +538,16 @@ npm run test:dynreg   # Dynamic Registration + launch, end to end</pre>
       </li>
       <li>
         <strong>Show the persisted state</strong>
-        <span>In the Azure portal, open the <code>lti-demo</code> Cosmos account → Data Explorer → the
-          <code>ltijs</code> database to show the platform registration (including the dynamically
-          registered one) and the launch nonce/state records.</span>
+        <span>Locally, connect to <code>mongodb://localhost:27017/ltijs</code> (published by
+          <code>npm run local</code>); on Azure, open the <code>lti-demo</code> Cosmos account → Data
+          Explorer → the <code>ltijs</code> database. Either way you see the platform registration
+          (including the dynamically registered one) and the launch nonce/state records.</span>
       </li>
     </ol>
-    <p class="foot">The tool accepts a launch only because the token’s signature, issuer, audience,
-      one-time nonce, expiry, and deployment all validate — break any one and it’s rejected. Switching
-      student ↔ instructor is a launch choice only; the tool renders whatever role the token asserts.</p>
+    <p class="foot">Re-run Dynamic Registration anytime with the LMS <em>Forget registration</em> button
+      or <code>npm run reset</code>. The tool accepts a launch only because the token’s signature, issuer,
+      audience, one-time nonce, expiry, and deployment all validate — break any one and it’s rejected.
+      Switching student ↔ instructor is a launch choice only; the tool renders whatever role the token asserts.</p>
   </div>
 </div>
 </body>
