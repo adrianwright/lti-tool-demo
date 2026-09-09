@@ -1,0 +1,20 @@
+services:
+  mongo:
+    image: mongo:7
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  tool:
+    build: .
+    env_file: .env
+    environment:
+      MONGO_URL: mongodb://mongo:27017/ltijs
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy

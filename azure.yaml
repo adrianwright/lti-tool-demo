@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: lti-poc
+metadata:
+  template: lti-poc@1.0.0
+services:
+  tool:
+    project: .
+    host: containerapp
+    language: docker
+    docker:
+      remoteBuild: true
+hooks:
+  preprovision:
+    shell: pwsh
+    run: ./scripts/preprovision.ps1
+    interactive: true
+    continueOnError: false
+  postprovision:
+    shell: pwsh
+    run: ./scripts/postprovision.ps1
+    interactive: true
+    continueOnError: false

@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LTI 1.3 Handshake POC — Demo Guide</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 2rem 1.25rem 3rem;
+  background: var(--cp-bg);
+  color: var(--cp-text);
+  font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.5;
+}
+.wrap { max-width: 1080px; margin: 0 auto; }
+header { margin-bottom: 1.75rem; }
+h1 { font-size: 1.6rem; margin: 0 0 .35rem; }
+h2 { font-size: 1.15rem; margin: 0 0 .9rem; }
+.lede { color: var(--cp-text-muted); margin: 0; max-width: 70ch; }
+
+.card {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+  box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
+  padding: 1.4rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.grid { display: grid; gap: 1.5rem; grid-template-columns: 1fr; }
+@media (min-width: 860px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+svg { width: 100%; height: auto; display: block; }
+.lane-box { fill: var(--cp-surface-soft); stroke: var(--cp-border-strong); }
+.lane-label { fill: var(--cp-text); font-weight: 600; font-size: 14px; }
+.lane-sub { fill: var(--cp-text-muted); font-size: 11px; }
+.lifeline { stroke: var(--cp-border); stroke-width: 1.5; stroke-dasharray: 4 5; }
+.msg { stroke: var(--cp-accent); stroke-width: 2; }
+.msg-return { stroke: var(--cp-text-muted); stroke-width: 1.75; stroke-dasharray: 6 4; }
+.selfmsg { stroke: var(--cp-link); stroke-width: 2; fill: none; }
+.step-num { fill: var(--cp-accent); font-weight: 700; font-size: 12px; }
+.msg-label { fill: var(--cp-text); font-size: 12px; }
+.msg-sub { fill: var(--cp-text-muted); font-size: 10.5px; }
+.note-box { fill: var(--cp-accent-soft); stroke: var(--cp-accent); stroke-dasharray: 3 3; }
+.note-text { fill: var(--cp-text); font-size: 10.5px; }
+
+ol.steps { margin: 0; padding-left: 0; list-style: none; counter-reset: step; }
+ol.steps li { position: relative; padding: 0 0 1.1rem 2.6rem; }
+ol.steps li:last-child { padding-bottom: 0; }
+ol.steps li::before {
+  counter-increment: step; content: counter(step);
+  position: absolute; left: 0; top: 0;
+  width: 1.8rem; height: 1.8rem; border-radius: 50%;
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+  display: grid; place-items: center; font-weight: 700; font-size: .9rem;
+}
+ol.steps li strong { display: block; margin-bottom: .15rem; }
+ol.steps li span { color: var(--cp-text-muted); font-size: .92rem; }
+code, pre { font-family: Consolas, "Courier New", Courier, monospace; }
+code {
+  background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+  border-radius: 6px; padding: .08rem .35rem; font-size: .85em;
+}
+pre {
+  background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
+  border-radius: 10px; padding: .8rem 1rem; overflow-x: auto; margin: .5rem 0 0;
+  font-size: .82rem; color: var(--cp-text);
+}
+.pill { display: inline-block; font-size: .72rem; font-weight: 600; padding: .12rem .5rem; border-radius: 999px; }
+.pill.real { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.pill.sim  { background: var(--cp-surface-soft); color: var(--cp-text-muted); border: 1px solid var(--cp-border); }
+ul.fid { margin: .3rem 0 0; padding-left: 1.1rem; }
+ul.fid li { margin-bottom: .5rem; }
+ul.fid li span { color: var(--cp-text-muted); }
+.legend { display: flex; gap: 1.25rem; flex-wrap: wrap; margin-top: .75rem; font-size: .82rem; color: var(--cp-text-muted); }
+.legend i { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: .4rem; }
+.legend .l1 { border-top: 2px solid var(--cp-accent); }
+.legend .l2 { border-top: 2px dashed var(--cp-text-muted); }
+.legend .l3 { border-top: 2px solid var(--cp-link); }
+.foot { color: var(--cp-text-soft); font-size: .82rem; margin-top: .5rem; }
+
+ul.flow { list-style: none; margin: 0; padding: 0; }
+ul.flow li { display: flex; gap: .9rem; padding: .75rem 0; border-top: 1px solid var(--cp-border); }
+ul.flow li:first-child { border-top: 0; }
+ul.flow .k {
+  flex: 0 0 auto; width: 2rem; height: 2rem; border-radius: 50%;
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+  display: grid; place-items: center; font-weight: 700; font-size: .85rem;
+}
+ul.flow .b strong { display: block; margin: .1rem 0 .1rem; }
+ul.flow .b > span { color: var(--cp-text-muted); font-size: .92rem; }
+ul.flow .dir { font-size: .7rem; color: var(--cp-text-soft); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+table.gtable { width: 100%; border-collapse: collapse; font-size: .9rem; margin-bottom: .4rem; }
+table.gtable caption {
+  text-align: left; font-weight: 700; color: var(--cp-accent);
+  padding: .9rem 0 .35rem; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+}
+table.gtable th, table.gtable td { text-align: left; vertical-align: top; padding: .45rem .5rem; border-top: 1px solid var(--cp-border); }
+table.gtable th { color: var(--cp-text); font-weight: 600; width: 10rem; }
+table.gtable td { color: var(--cp-text-muted); }
+table.gtable th code { white-space: nowrap; }
+.authgrid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+@media (min-width: 720px) { .authgrid { grid-template-columns: 1fr 1fr; } }
+.authbox { border: 1px solid var(--cp-border); border-radius: 10px; padding: .9rem 1rem; background: var(--cp-surface-soft); }
+.authbox h3 { margin: 0 0 .35rem; font-size: .98rem; }
+.authbox p { margin: 0; color: var(--cp-text-muted); font-size: .9rem; }
+.keytag { font-size: .72rem; font-weight: 700; padding: .1rem .45rem; border-radius: 999px; background: var(--cp-accent-soft); color: var(--cp-accent); }
+table.cmp { width: 100%; border-collapse: collapse; font-size: .9rem; }
+table.cmp th, table.cmp td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-top: 1px solid var(--cp-border); }
+table.cmp thead th { border-top: 0; color: var(--cp-accent); font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; }
+table.cmp tbody th { color: var(--cp-text); font-weight: 600; width: 12rem; }
+table.cmp td { color: var(--cp-text-muted); }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>LTI 1.3 Handshake POC — how the demo works</h1>
+    <p class="lede">A synthetic LTI platform completes a full OpenID Connect launch against a real
+      <code>ltijs</code> tool hosted on Azure Container Apps. The tool validates the platform-signed
+      token exactly as it would for a live LMS launch, then renders the authenticated student page.</p>
+  </header>
+
+  <div class="card">
+    <h2>Before the first launch — one-time setup</h2>
+    <p class="lede" style="margin-bottom:1rem">LTI 1.3 has no discovery: the tool and the platform must
+      register with each other <strong>before any launch</strong>. Nothing in Steps 1–4 works cold — the
+      tool needs the platform’s public key, issuer, and <code>client_id</code> in hand first.</p>
+    <table class="cmp">
+      <thead><tr><th>What must exist</th><th>In this demo</th><th>In a real LMS</th></tr></thead>
+      <tbody>
+        <tr>
+          <th>Signing keys</th>
+          <td><code>npm run setup</code> generates the platform keypair; ltijs generates the tool’s own keys at boot (served at <code>/keys</code>).</td>
+          <td>The tool generates a keypair and exposes a <strong>JWKS URL</strong>.</td>
+        </tr>
+        <tr>
+          <th>Tool ↔ platform registration</th>
+          <td>The tool calls <code>registerPlatform()</code> at boot, trusting the synthetic platform’s public key, <code>iss</code>, and <code>client_id</code>.</td>
+          <td>An admin creates a <strong>developer / LTI key</strong> from the tool’s config; the LMS issues a <code>client_id</code>.</td>
+        </tr>
+        <tr>
+          <th>Platform endpoints</th>
+          <td>Placeholder <code>iss</code> / authorize / token URLs in <code>.env</code> — never actually called, since the platform is local.</td>
+          <td>The tool stores the LMS’s fixed <code>iss</code>, OIDC authorize, token, and JWKS URLs.</td>
+        </tr>
+        <tr>
+          <th>Deployment</th>
+          <td><code>LTI_DEPLOYMENT_ID=1</code> in <code>.env</code>.</td>
+          <td>An admin <strong>deploys</strong> the key to an account or course, producing a real <code>deployment_id</code>.</td>
+        </tr>
+        <tr>
+          <th>State store</th>
+          <td>MongoDB/Cosmos comes up with the tool (Compose or azd); ltijs persists the registration and per-launch nonces.</td>
+          <td>The tool runs its own database for registrations and launch state.</td>
+        </tr>
+        <tr>
+          <th>Tool address</th>
+          <td><code>TOOL_URL</code> in <code>.env</code> — localhost, or the Container App URL set by the deploy hook.</td>
+          <td>Public HTTPS login &amp; launch URLs registered on the key.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="foot">Order: <code>npm run setup</code> → bring up the tool + store (which registers the
+      platform) → then <code>npm test</code> / <code>npm run demo</code>. In an LMS, this is the admin’s
+      one-time developer-key setup and deployment before anyone clicks the link.</p>
+  </div>
+
+  <div class="card">
+    <h2>The launch handshake</h2>
+    <svg viewBox="0 0 960 560" role="img" aria-label="LTI 1.3 launch sequence diagram">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--cp-accent)"></path>
+        </marker>
+        <marker id="arrow-mute" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--cp-text-muted)"></path>
+        </marker>
+        <marker id="arrow-link" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--cp-link)"></path>
+        </marker>
+      </defs>
+
+      <!-- lanes -->
+      <g>
+        <rect class="lane-box" x="40" y="18" width="220" height="52" rx="10"></rect>
+        <text class="lane-label" x="150" y="40" text-anchor="middle">Synthetic Platform</text>
+        <text class="lane-sub" x="150" y="57" text-anchor="middle">scripts/launch.mjs (stands in for the LMS)</text>
+        <line class="lifeline" x1="150" y1="70" x2="150" y2="540"></line>
+      </g>
+      <g>
+        <rect class="lane-box" x="380" y="18" width="220" height="52" rx="10"></rect>
+        <text class="lane-label" x="490" y="40" text-anchor="middle">LTI Tool (ltijs)</text>
+        <text class="lane-sub" x="490" y="57" text-anchor="middle">Azure Container Apps · HTTPS</text>
+        <line class="lifeline" x1="490" y1="70" x2="490" y2="540"></line>
+      </g>
+      <g>
+        <rect class="lane-box" x="720" y="18" width="200" height="52" rx="10"></rect>
+        <text class="lane-label" x="820" y="40" text-anchor="middle">Cosmos DB (Mongo)</text>
+        <text class="lane-sub" x="820" y="57" text-anchor="middle">ltijs state / nonce / registration</text>
+        <line class="lifeline" x1="820" y1="70" x2="820" y2="540"></line>
+      </g>
+
+      <!-- Step 1: login initiation -->
+      <text class="step-num" x="150" y="103">STEP 1 · Login initiation</text>
+      <text class="msg-label" x="158" y="120">GET /login</text>
+      <text class="msg-sub" x="158" y="134">iss, login_hint, client_id, deployment_id, target_link_uri</text>
+      <line class="msg" x1="150" y1="142" x2="486" y2="142" marker-end="url(#arrow)"></line>
+
+      <!-- Tool writes state+nonce -->
+      <text class="msg-sub" x="512" y="163">store state + nonce</text>
+      <line class="msg" x1="490" y1="171" x2="816" y2="171" marker-end="url(#arrow)"></line>
+
+      <!-- Step 2: auth redirect (intercepted) -->
+      <text class="step-num" x="300" y="200" text-anchor="middle">STEP 2 · Authentication request</text>
+      <text class="msg-sub" x="330" y="216" text-anchor="middle">302 redirect → authorize (state, nonce) + Set-Cookie</text>
+      <line class="msg-return" x1="486" y1="224" x2="154" y2="224" marker-end="url(#arrow-mute)"></line>
+      <rect class="note-box" x="250" y="232" width="200" height="20" rx="5"></rect>
+      <text class="note-text" x="350" y="246" text-anchor="middle">redirect intercepted — platform is local</text>
+
+      <!-- self sign -->
+      <path class="selfmsg" d="M150,272 h44 v22 h-44" marker-end="url(#arrow-link)"></path>
+      <text class="msg-sub" x="200" y="279">sign id_token (RS256, echoes nonce)</text>
+
+      <!-- Step 3: launch POST -->
+      <text class="step-num" x="150" y="317">STEP 3 · Authentication response (launch)</text>
+      <text class="msg-label" x="158" y="334">POST /lti/launch</text>
+      <text class="msg-sub" x="158" y="348">id_token (signed JWT) + state</text>
+      <line class="msg" x1="150" y1="356" x2="486" y2="356" marker-end="url(#arrow)"></line>
+
+      <!-- tool validate -->
+      <path class="selfmsg" d="M490,376 h44 v22 h-44" marker-end="url(#arrow-link)"></path>
+      <text class="msg-sub" x="540" y="383">validate signature · iss · aud · nonce · exp · deployment_id</text>
+
+      <!-- read state -->
+      <text class="msg-sub" x="512" y="419">verify state + nonce</text>
+      <line class="msg" x1="490" y1="427" x2="816" y2="427" marker-end="url(#arrow)"></line>
+
+      <!-- Step 4: render -->
+      <text class="step-num" x="320" y="462" text-anchor="middle">STEP 4 · Resource display</text>
+      <text class="msg-sub" x="330" y="478" text-anchor="middle">200 OK — handshake page (User: Sam Student · Role: Learner, Student)</text>
+      <line class="msg-return" x1="486" y1="486" x2="154" y2="486" marker-end="url(#arrow-mute)"></line>
+    </svg>
+    <div class="legend">
+      <span><i class="l1"></i>request / write</span>
+      <span><i class="l2"></i>response (intercepted at the platform)</span>
+      <span><i class="l3"></i>in-tool validation</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Reading the handshake, step by step</h2>
+    <ul class="flow">
+      <li>
+        <span class="k">1</span>
+        <div class="b">
+          <span class="dir">Platform → Tool · unauthenticated</span>
+          <strong>Login initiation</strong>
+          <span>The LMS pokes the tool at <code>/login</code> to say “a launch is coming.” It carries
+            identifiers only (<code>iss</code>, <code>client_id</code>, <code>deployment_id</code>,
+            <code>login_hint</code>, <code>target_link_uri</code>). The tool trusts nothing yet — it just
+            uses <code>iss</code>+<code>client_id</code> to find which platform this is.</span>
+        </div>
+      </li>
+      <li>
+        <span class="k">2</span>
+        <div class="b">
+          <span class="dir">Tool → Platform · sets up security</span>
+          <strong>Authentication request</strong>
+          <span>The tool mints a fresh <code>state</code> (anti-CSRF) and <code>nonce</code> (anti-replay),
+            stores them (cookie + database), and redirects the browser to the platform’s authorize
+            endpoint carrying them. This is how a platform-triggered launch becomes a
+            tool-controlled OIDC request.</span>
+        </div>
+      </li>
+      <li>
+        <span class="k">3</span>
+        <div class="b">
+          <span class="dir">Platform → Tool · authenticated</span>
+          <strong>Authentication response (the launch)</strong>
+          <span>The platform POSTs an <code>id_token</code> — a JWT <em>signed with its private key</em> —
+            plus the <code>state</code>. The tool verifies the signature with the platform’s public key
+            and checks <code>iss</code>, <code>aud</code>, <code>exp</code>, <code>nonce</code>,
+            <code>deployment_id</code>, and that <code>state</code> matches its cookie.</span>
+        </div>
+      </li>
+      <li>
+        <span class="k">4</span>
+        <div class="b">
+          <span class="dir">Tool → Browser</span>
+          <strong>Resource display</strong>
+          <span>Every check passes, so the tool reads the token’s claims (user, roles, course context)
+            and renders the authenticated page.</span>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Every field, and why it’s there</h2>
+    <p class="lede" style="margin-bottom:.4rem">The parameters do three jobs: establish
+      <strong>identity</strong> (who is talking, to whom, about what), provide
+      <strong>security correlation</strong> (stop forgery and replay), and carry
+      <strong>the payload</strong> (who the user is).</p>
+
+    <table class="gtable">
+      <caption>Identity &amp; routing — who / to whom / about what</caption>
+      <tbody>
+        <tr><th><code>iss</code></th><td><strong>Issuer.</strong> Identifies the platform (the LMS). The tool keys its registration lookup on this to find the platform’s public key and endpoints. A real LMS uses a fixed issuer URL; ours is a placeholder.</td></tr>
+        <tr><th><code>client_id</code></th><td>The tool’s registration ID at the platform. It reappears as the token’s <code>aud</code>, so a token can prove it was minted for <em>this</em> tool and no other.</td></tr>
+        <tr><th><code>deployment_id</code></th><td>Which deployment of the tool under that <code>client_id</code> — one registration can be deployed to many courses or accounts.</td></tr>
+        <tr><th><code>login_hint</code></th><td>Opaque handle the platform uses to remember the user/session. The tool echoes it back untouched in Step 2 and never decodes it.</td></tr>
+        <tr><th><code>target_link_uri</code></th><td>Where the tool should ultimately land the user (the final resource). Verified at launch and used for the Step 4 destination.</td></tr>
+        <tr><th><code>redirect_uri</code></th><td>In Step 2 the tool tells the platform where to send the token; it must exactly match a value registered on the platform (prevents token delivery to an attacker).</td></tr>
+      </tbody>
+    </table>
+
+    <table class="gtable">
+      <caption>Security correlation — stop forgery &amp; replay</caption>
+      <tbody>
+        <tr><th><code>state</code></th><td><strong>Anti-CSRF.</strong> A random value the tool creates in Step 2 and stores in a cookie. The platform echoes it back with the token; the tool checks they match to prove the response belongs to the <em>same browser</em> that started the launch.</td></tr>
+        <tr><th><code>nonce</code></th><td><strong>Anti-replay.</strong> A random single-use value the tool creates in Step 2. It must appear <em>inside</em> the signed <code>id_token</code>; the tool checks it matches and hasn’t been seen before, so an old token can’t be reused.</td></tr>
+        <tr><th>the cookie</th><td>Carries <code>state</code> in the browser between Step 2 and Step 3. This is the value that must survive the round-trip — and the one that breaks in LMS iframes (third-party cookie blocking).</td></tr>
+      </tbody>
+    </table>
+
+    <table class="gtable">
+      <caption>The <code>id_token</code> — the signed payload</caption>
+      <tbody>
+        <tr><th><code>id_token</code></th><td>The signed JWT itself — the <strong>only authenticated message</strong>. Signed by the platform’s private key, verified with its public key.</td></tr>
+        <tr><th><code>alg</code> / <code>kid</code></th><td>JWT header: <code>RS256</code> and the key id, telling the tool which public key verifies the signature.</td></tr>
+        <tr><th><code>aud</code></th><td>Audience — equals the tool’s <code>client_id</code>. Rejects a token minted for a different tool.</td></tr>
+        <tr><th><code>exp</code> / <code>iat</code></th><td>Expiry and issued-at timestamps — bound the token’s lifetime so it can’t be used indefinitely.</td></tr>
+        <tr><th><code>sub</code></th><td>The user’s stable identifier at the platform. Always present, even when name/email are withheld.</td></tr>
+        <tr><th><code>name</code> / <code>email</code></th><td>User profile fields, released according to the platform’s privacy level.</td></tr>
+        <tr><th><code>roles</code></th><td>The user’s role URIs (e.g. <code>…membership#Learner</code>). Drives what the tool shows — the whole student vs. instructor distinction lives here.</td></tr>
+        <tr><th><code>context</code></th><td>The course: <code>id</code>, <code>label</code>, <code>title</code>, <code>type</code>. Scopes the launch to a specific course.</td></tr>
+        <tr><th><code>message_type</code><br><code>version</code></th><td><code>LtiResourceLinkRequest</code> and <code>1.3.0</code> — declare this is a standard LTI 1.3 resource-link launch.</td></tr>
+        <tr><th><code>resource_link</code></th><td>Identifies the specific link/placement that was clicked inside the course.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>How authentication works</h2>
+    <p class="lede" style="margin-bottom:1rem">Traffic goes both ways, but the cryptographic
+      authentication is <strong>one-directional and uses asymmetric keys — no shared secret</strong>.</p>
+    <div class="authgrid">
+      <div class="authbox">
+        <h3><span class="keytag">PROVES IDENTITY</span></h3>
+        <p><strong>Platform → Tool.</strong> The platform signs the <code>id_token</code> with its
+          <strong>private key</strong>; the tool verifies with the matching <strong>public key</strong>
+          (a real LMS publishes it at a JWKS URL; our POC registers a static key). A valid signature
+          proves the sender holds the platform’s private key.</p>
+      </div>
+      <div class="authbox">
+        <h3><span class="keytag">NOT CREDENTIALS</span></h3>
+        <p><code>state</code> and <code>nonce</code> don’t authenticate anyone — they’re anti-CSRF and
+          anti-replay glue. <code>iss</code>, <code>client_id</code>, <code>login_hint</code> are
+          identifiers, not secrets.</p>
+      </div>
+      <div class="authbox">
+        <h3><span class="keytag">REVERSE DIRECTION</span></h3>
+        <p>The tool only authenticates <em>back</em> to the platform for optional LTI Advantage services
+          (grades, roster), using its <strong>own</strong> signing key via OAuth 2.0 client-credentials.
+          Not part of this handshake — which is why the tool’s <code>/keys</code> is dormant here.</p>
+      </div>
+      <div class="authbox">
+        <h3><span class="keytag">TRANSPORT</span></h3>
+        <p>Every hop is HTTPS, so TLS server certificates authenticate the domains (the browser confirms
+          it’s really the tool, really the LMS). That’s separate from the LTI-level JWT authentication above.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Run the demo</h2>
+      <ol class="steps">
+        <li>
+          <strong>Confirm the tool is live</strong>
+          <span>The tool is deployed to Azure Container Apps in resource group <code>lti-demo</code>.
+            Health check should return <code>{"status":"ok"}</code> at <code>/healthz</code>.</span>
+        </li>
+        <li>
+          <strong>Run the headless proof</strong>
+          <span>Signs a student launch and validates the full round-trip. Good for showing it is CI-able.</span>
+          <pre>npm test</pre>
+          <span>Expect: <code>PASS: complete LTI 1.3 OIDC launch handshake validated.</code></span>
+        </li>
+        <li>
+          <strong>Run the visual demo</strong>
+          <span>Opens a real browser and completes the launch top-level, rendering the authenticated page.</span>
+          <pre>npm run demo</pre>
+          <span>The page shows <code>User: Sam Student</code>, <code>Course: course-101</code>,
+            <code>Deployment: 1</code>, <code>Role: Learner, Student</code>. Close the window to end.</span>
+        </li>
+        <li>
+          <strong>Show the persisted state</strong>
+          <span>In the Azure portal, open the <code>lti-demo</code> Cosmos account → Data Explorer →
+            the <code>ltijs</code> database to show the platform registration and the launch
+            nonce/state records written during the handshake.</span>
+        </li>
+        <li>
+          <strong>Talking point: the trust boundary</strong>
+          <span>The tool accepts a launch only because the token’s signature, issuer, audience,
+            one-time nonce, expiry, and deployment all validate. Break any one and the launch is rejected.</span>
+        </li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>What’s real vs. simulated</h2>
+      <ul class="fid">
+        <li>
+          <span class="pill real">REAL</span>
+          <strong>The tool and its validation.</strong>
+          <span> <code>ltijs</code> is a certified LTI 1.3 library; it enforces the same JWT signature,
+            <code>iss</code>, <code>aud</code>, <code>nonce</code>, <code>exp</code>, <code>deployment_id</code>,
+            and <code>state</code> checks an LMS requires.</span>
+        </li>
+        <li>
+          <span class="pill real">REAL</span>
+          <strong>LMS-shaped student claims.</strong>
+          <span> <code>LtiResourceLinkRequest</code> with <code>membership#Learner</code> +
+            <code>institution/person#Student</code>, <code>context</code>, <code>tool_platform</code>,
+            <code>launch_presentation</code>.</span>
+        </li>
+        <li>
+          <span class="pill sim">SIMULATED</span>
+          <strong>The platform.</strong>
+          <span> The test script signs the token with a local key registered on the tool
+            (ltijs <code>RSA_KEY</code>) instead of the LMS signing it and publishing a JWKS;
+            <code>iss</code>/<code>client_id</code> are placeholders.</span>
+        </li>
+        <li>
+          <span class="pill sim">SIMULATED</span>
+          <strong>Step 2 &amp; the iframe path.</strong>
+          <span> The redirect to the LMS’s session-checking authorize endpoint is short-circuited,
+            and the launch runs <em>top-level</em>, so the iframe + LTI Platform Storage
+            (<code>lti_storage_target</code>) cookieless flow is not reproduced.</span>
+        </li>
+      </ul>
+      <p class="foot">Switching student ↔ instructor is a launch-script change only — the tool renders
+        whatever role the token asserts, so no redeploy is needed to demo a different persona.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

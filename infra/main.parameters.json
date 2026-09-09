@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "ltiKey": {
+      "value": "${LTI_KEY}"
+    },
+    "platformUrl": {
+      "value": "${PLATFORM_URL}"
+    },
+    "platformClientId": {
+      "value": "${PLATFORM_CLIENT_ID}"
+    },
+    "platformAuthEndpoint": {
+      "value": "${PLATFORM_AUTH_ENDPOINT}"
+    },
+    "platformTokenEndpoint": {
+      "value": "${PLATFORM_TOKEN_ENDPOINT}"
+    },
+    "platformPublicKey": {
+      "value": "${PLATFORM_PUBLIC_KEY}"
+    }
+  }
+}

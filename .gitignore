@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Secrets & local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Azure Developer CLI (environment folder can contain secrets)
+.azure/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
