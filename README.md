@@ -193,6 +193,15 @@ It differs from a real LMS in these ways:
   LMS renders the tool in an **iframe**, where third-party-cookie blocking
   requires the **LTI Platform Storage** (`lti_storage_target`) `postMessage`
   flow — not reproduced here.
+
+  A launch does **not** have to be an iframe. The `launch_presentation`
+  `document_target` can be `window` (a new tab/window), and some placements
+  (e.g. Canvas `course_navigation` with `windowTarget: "_blank"`) open the tool
+  top-level. In a new window the tool is first-party, so cookies work without
+  Platform Storage — that's exactly why this POC's top-level launches succeed.
+  The tradeoff is UX (the tool leaves the LMS page) and that the LMS/placement,
+  not the tool, ultimately decides the target; iframe embedding is more seamless
+  but needs the cookieless path. A production tool often supports both.
 - The synthetic-script mode additionally short-circuits the authorize redirect
   (it signs the token directly) and uses placeholder `iss`/`client_id`.
 
